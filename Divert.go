@@ -28,9 +28,10 @@ type WINDIVERTADDRESS struct {
 	IfIdx     uint64
 }
 
-func SendOut(Handle uintptr, Data []byte) {
+func SendOut(Handle uintptr, Data []byte) error {
 	thisPacket := DivertPacket{Data: Data, Addr: WINDIVERTADDRESS{Timestamp: 0, Flag: 131072}}
-	WinDivertSend(Handle, &thisPacket)
+	err := WinDivertSend(Handle, &thisPacket)
+	return err
 }
 
 func DivertInit() {

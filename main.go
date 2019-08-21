@@ -2,38 +2,23 @@ package main
 
 import (
 	"log"
-	"net"
+	"time"
 )
-
-var Password string
-var ProtocolBuffer map[string][]string
-var ProtocolBufferCount map[string]uint
-
-var Srcv6Map []net.IP
-var Srcv4Map []net.IP
-var Dstv6Map []net.IP
-var Dstv4Map []net.IP
 
 func main() {
 	DivertInit()
-	Init()
-	SetDestIP()
+	IPWhiteList = make(map[string]int64)
 
 	Handle, err := WinDivertOpen("true", 0, 1000, 0)
 	if err != nil {
 		log.Fatal(err)
 	}
-	ShowChat(Handle)
-
-	EndFlag = true
+	go PXLoop(Handle)
+	go TXLoop(Handle)
+	go RXLoop(Handle)
+	for !EndFlag {
+		time.Sleep(1000)
+	}
 	WinDivertShutdown(Handle, 0x3)
 	WinDivertClose(Handle)
-}
-
-func Init() {
-	ProtocolBuffer = make(map[string][]string)
-	ProtocolBufferCount = make(map[string]uint)
-	AskPassword()
-	AskListenAddr()
-
 }

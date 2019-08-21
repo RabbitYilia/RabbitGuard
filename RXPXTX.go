@@ -1,12 +1,14 @@
 package main
 
 import (
-	"encoding/json"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"log"
+	"net"
 	"time"
 )
+
+var IPWhiteList map[string]int64
 
 func RXLoop(Handle uintptr) {
 	for {
@@ -44,16 +46,50 @@ func PXLoop(Handle uintptr) {
 		case Packet := <-RXChan:
 			IPVersion := Packet.Data[0] >> 4
 			var thisPacket gopacket.Packet
+			var SrcIP, DstIP net.IP
 			if IPVersion == 4 {
 				thisPacket = gopacket.NewPacket(Packet.Data, layers.LayerTypeIPv4, gopacket.Lazy)
+				IPHeader := thisPacket.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
+				SrcIP = IPHeader.SrcIP
+				DstIP = IPHeader.DstIP
 			} else {
 				thisPacket = gopacket.NewPacket(Packet.Data, layers.LayerTypeIPv6, gopacket.Lazy)
+				IPHeader := thisPacket.Layer(layers.LayerTypeIPv6).(*layers.IPv6)
+				SrcIP = IPHeader.SrcIP
+				DstIP = IPHeader.DstIP
 			}
-			ProtocolData := SeekData(thisPacket)
-			if ProtocolData != nil {
-				ProcessData(ProtocolData)
-			} else {
+			if (Packet.Addr.Flag>>17)%2 == 1 {
+				//Outbound Pass Directly and Record
+				IPWhiteList[DstIP.String()] = time.Now().Unix()
 				TXChan <- Packet
+			} else {
+				//Inbound
+				_, Exist := IPWhiteList[SrcIP.String()]
+				if Exist {
+					//Exist in WhiteList
+					TXChan <- Packet
+				} else {
+					log.Println("Maybe Detection")
+					log.Println(thisPacket)
+					//Drop
+					buffer := gopacket.NewSerializeBuffer()
+					options := gopacket.SerializeOptions{}
+					options.ComputeChecksums = true
+					if IPVersion == 4 {
+						thisPacket = gopacket.NewPacket(Packet.Data, layers.LayerTypeIPv4, gopacket.Lazy)
+						IPHeader := thisPacket.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
+						IPHeader.DstIP = net.ParseIP("192.168.99.2")
+						gopacket.SerializeLayers(buffer, options, IPHeader)
+					} else {
+						thisPacket = gopacket.NewPacket(Packet.Data, layers.LayerTypeIPv6, gopacket.Lazy)
+						IPHeader := thisPacket.Layer(layers.LayerTypeIPv6).(*layers.IPv6)
+						IPHeader.DstIP = net.ParseIP("dddd::2")
+						gopacket.SerializeLayers(buffer, options, IPHeader)
+					}
+					if SendOut(Handle, buffer.Bytes()) != nil {
+						log.Println("Redirect Failed")
+					}
+				}
 			}
 		case <-time.After(1 * time.Second):
 			if EndFlag {
@@ -64,19 +100,6 @@ func PXLoop(Handle uintptr) {
 			}
 		}
 	}
-}
-
-func SeekData(Data gopacket.Packet) *Protocol {
-	if Data.Layer(layers.LayerTypeUDP) == nil {
-		return nil
-	}
-	Payload := Data.Layer(layers.LayerTypeUDP).LayerPayload()
-	ProtocolData := Protocol{}
-	err := json.Unmarshal(Payload, &ProtocolData)
-	if err != nil {
-		return nil
-	}
-	return &ProtocolData
 }
 
 func TXLoop(Handle uintptr) {
