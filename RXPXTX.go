@@ -78,12 +78,12 @@ func PXLoop(Handle uintptr) {
 					if IPVersion == 4 {
 						thisPacket = gopacket.NewPacket(Packet.Data, layers.LayerTypeIPv4, gopacket.Lazy)
 						IPHeader := thisPacket.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
-						IPHeader.DstIP = net.ParseIP("192.168.99.2")
+						IPHeader.DstIP = net.ParseIP(configuration.V4RedirectAddr)
 						gopacket.SerializeLayers(buffer, options, IPHeader)
 					} else {
 						thisPacket = gopacket.NewPacket(Packet.Data, layers.LayerTypeIPv6, gopacket.Lazy)
 						IPHeader := thisPacket.Layer(layers.LayerTypeIPv6).(*layers.IPv6)
-						IPHeader.DstIP = net.ParseIP("dddd::2")
+						IPHeader.DstIP = net.ParseIP(configuration.V6RedirectAddr)
 						gopacket.SerializeLayers(buffer, options, IPHeader)
 					}
 					if SendOut(Handle, buffer.Bytes()) != nil {
